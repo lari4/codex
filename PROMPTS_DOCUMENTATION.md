@@ -880,3 +880,173 @@ shell {"command":["apply_patch","*** Begin Patch\n*** Add File: hello.txt\n+Hell
 
 ---
 
+## 6. Issue Management & Triage
+
+Промпты для автоматической обработки GitHub issues.
+
+### 6.1 Issue Labeler - Автоматическое добавление меток к issues
+
+**Назначение**: Автоматически анализирует новые GitHub issues и добавляет соответствующие метки (labels). Помогает с триажем и категоризацией issues в репозитории.
+
+**Расположение**:
+- Файл: `.github/prompts/issue-labeler.txt`
+- Используется в: `.github/workflows/issue-labeler.yml:26-66`
+
+**Доступные метки**:
+- `bug` - воспроизводимые дефекты в продуктах Codex
+- `enhancement` - feature requests, улучшения usability
+- `extension` - проблемы специфичные для VS Code extension
+- `windows-os` - баги специфичные для Windows
+- `mcp` - темы связанные с Model Context Protocol
+- `codex-web` - проблемы web UI
+- `azure` - проблемы связанные с Azure OpenAI
+- `documentation` - обновления или исправления в документации
+- `model-behavior` - нежелательное поведение LLM
+
+**Входные данные**: Environment variables (ISSUE_NUMBER, ISSUE_TITLE, ISSUE_BODY, REPO_FULL_NAME)
+
+**Выходные данные**: JSON массив с названиями меток
+
+**Промпт**:
+
+```markdown
+You are an assistant that reviews GitHub issues for the repository.
+
+Your job is to choose the most appropriate existing labels for the issue described later in this prompt.
+Follow these rules:
+- Only pick labels out of the list below.
+- Prefer a small set of precise labels over many broad ones.
+- If none of the labels fit, respond with an empty JSON array: []
+- Output must be a JSON array of label names (strings) with no additional commentary.
+
+Labels to apply:
+1. bug — Reproducible defects in Codex products (CLI, VS Code extension, web, auth).
+2. enhancement — Feature requests or usability improvements that ask for new capabilities, better ergonomics, or quality-of-life tweaks.
+3. extension — VS Code (or other IDE) extension-specific issues.
+4. windows-os — Bugs or friction specific to Windows environments (PowerShell behavior, path handling, copy/paste, OS-specific auth or tooling failures).
+5. mcp — Topics involving Model Context Protocol servers/clients.
+6. codex-web — Issues targeting the Codex web UI/Cloud experience.
+8. azure — Problems or requests tied to Azure OpenAI deployments.
+9. documentation — Updates or corrections needed in docs/README/config references (broken links, missing examples, outdated keys, clarification requests).
+10. model-behavior — Undesirable LLM behavior: forgetting goals, refusing work, hallucinating environment details, quota misreports, or other reasoning/performance anomalies.
+
+Issue information is available in environment variables:
+
+ISSUE_NUMBER
+ISSUE_TITLE
+ISSUE_BODY
+REPO_FULL_NAME
+```
+
+---
+
+### 6.2 Issue Deduplicator - Поиск дубликатов issues
+
+**Назначение**: Анализирует новый issue и находит потенциальные дубликаты среди существующих issues. Помогает избежать дублирования и группировать похожие проблемы.
+
+**Расположение**:
+- Файл: `.github/prompts/issue-deduplicator.txt`
+- Используется в: `.github/workflows/issue-deduplicator.yml:50-62`
+
+**Входные данные**: JSON файлы в текущей директории:
+- `codex-current-issue.json` - новый issue (number, title, body)
+- `codex-existing-issues.json` - массив существующих issues (number, title, body, createdAt)
+
+**Критерии поиска**:
+- Совпадение в симптомах, feature requests, шагах воспроизведения
+- Похожие сообщения об ошибках
+- Приоритет новым issues при равной схожести
+- Максимум 5 результатов
+
+**Выходные данные**: JSON массив с номерами похожих issues (упорядочен по убыванию вероятности)
+
+**Промпт**:
+
+```markdown
+You are an assistant that triages new GitHub issues by identifying potential duplicates.
+
+You will receive the following JSON files located in the current working directory:
+- `codex-current-issue.json`: JSON object describing the newly created issue (fields: number, title, body).
+- `codex-existing-issues.json`: JSON array of recent issues (each element includes number, title, body, createdAt).
+
+Instructions:
+- Load both files as JSON and review their contents carefully. The codex-existing-issues.json file is large, ensure you explore all of it.
+- Compare the current issue against the existing issues to find up to five that appear to describe the same underlying problem or request.
+- Only consider an issue a potential duplicate if there is a clear overlap in symptoms, feature requests, reproduction steps, or error messages.
+- Prioritize newer issues when similarity is comparable.
+- Ignore pull requests and issues whose similarity is tenuous.
+- When unsure, prefer returning fewer matches.
+
+Output requirements:
+- Respond with a JSON array of issue numbers (integers), ordered from most likely duplicate to least.
+- Include at most five numbers.
+- If you find no plausible duplicates, respond with `[]`.
+```
+
+---
+
+## 7. UI/UX & Examples
+
+Промпты для пользовательского интерфейса и примеров использования.
+
+### 7.1 EXAMPLE_PROMPTS - Примеры для быстрого старта
+
+**Назначение**: Набор примеров промптов, которые отображаются в TUI (Terminal User Interface) для помощи пользователям в начале работы.
+
+**Расположение**:
+- Константа: `EXAMPLE_PROMPTS` в `codex-rs/tui/src/chatwidget.rs:2826`
+
+**Список примеров**:
+1. "Explain this codebase" - объяснение структуры кодовой базы
+2. "Summarize recent commits" - резюме последних коммитов
+3. "Implement {feature}" - реализация новой функциональности
+4. "Find and fix a bug in @filename" - поиск и исправление бага
+5. "Write tests for @filename" - написание тестов
+6. "Improve documentation in @filename" - улучшение документации
+
+**Использование**: Эти примеры помогают пользователям понять возможности Codex и быстро начать работу.
+
+---
+
+## Заключение
+
+### Сводная таблица всех промптов
+
+| № | Категория | Название | Файл | Основное назначение |
+|---|-----------|----------|------|---------------------|
+| 1.1 | Agent Behavior | BASE_INSTRUCTIONS | prompt.md | Основное поведение агента |
+| 1.2 | Agent Behavior | GPT_5_CODEX_INSTRUCTIONS | gpt_5_codex_prompt.md | Специфика для GPT-5 |
+| 1.3 | Agent Behavior | INIT_PROMPT | prompt_for_init_command.md | Генерация AGENTS.md |
+| 2.1 | Code Review | REVIEW_PROMPT | review_prompt.md | Code review инструкции |
+| 3.1 | Context Management | SUMMARIZATION_PROMPT | compact/prompt.md | Компактификация контекста |
+| 4.1 | Security | Sandbox Assessment | sandboxing/assessment_prompt.md | Оценка безопасности команд |
+| 5.1 | Code Generation | APPLY_PATCH_TOOL | apply_patch_tool_instructions.md | Формат apply_patch |
+| 6.1 | Issue Management | Issue Labeler | .github/prompts/issue-labeler.txt | Авто-метки для issues |
+| 6.2 | Issue Management | Issue Deduplicator | .github/prompts/issue-deduplicator.txt | Поиск дубликатов issues |
+| 7.1 | UI/UX | EXAMPLE_PROMPTS | (inline в chatwidget.rs) | Примеры для пользователей |
+
+### Принципы использования промптов
+
+1. **Модульность**: Каждый промпт отвечает за конкретную задачу
+2. **Композируемость**: Промпты могут комбинироваться в пайплайны
+3. **Безопасность**: Специальные промпты для оценки рисков
+4. **Адаптивность**: Разные промпты для разных моделей (GPT-5)
+5. **Структурированность**: JSON выходные форматы для интеграции
+
+### Точки интеграции в коде
+
+**Основные модули**:
+- `codex-rs/core/src/model_family.rs` - выбор промпта по семейству модели
+- `codex-rs/core/src/codex.rs` - основной event loop
+- `codex-rs/core/src/compact.rs` - управление контекстом
+- `codex-rs/core/src/sandboxing/` - sandbox оценка
+- `codex-rs/core/src/tasks/review.rs` - code review функциональность
+- `codex-rs/tui/src/chatwidget.rs` - TUI интерфейс
+- `.github/workflows/` - GitHub автоматизация
+
+---
+
+**Дата создания документации**: 2025-11-11
+**Версия проекта**: Codex - OpenAI agentic coding interface
+**Автор**: Автоматически сгенерировано AI агентом
+
