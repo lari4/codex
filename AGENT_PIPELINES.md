@@ -470,3 +470,280 @@ CompactedContext {
 
 ---
 
+## 4. Sandbox Assessment Pipeline
+
+### Описание
+Оценка безопасности shell команд, заблокированных sandbox'ом.
+
+### Местоположение
+- **Файл**: `codex-rs/core/src/sandboxing/assessment.rs:41`
+- **Промпт**: `codex-rs/core/templates/sandboxing/assessment_prompt.md`
+
+### ASCII Диаграмма
+```
+┌──────────────────────┐
+│ Command Blocked by   │
+│ Sandbox              │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────────────────────────┐
+│  1. Collect Command Metadata             │
+│  - platform, sandbox_policy              │
+│  - command_argv, working_directory       │
+└──────────┬───────────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────────┐
+│  2. Render Askama Template               │
+│  Prompt: Sandbox Assessment Template    │
+└──────────┬───────────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────────┐
+│  3. LLM Assesses Risk                    │
+│  Returns JSON:                           │
+│  {                                       │
+│    "description": "Installs...",         │
+│    "risk_level": "medium"                │
+│  }                                       │
+└──────────┬───────────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────────┐
+│  4. Present to User for Approval         │
+│  Description + Risk Level                │
+└──────────────────────────────────────────┘
+```
+
+### Risk Levels
+- **low**: read-only, listing files, configuration
+- **medium**: modifying files, installing dependencies
+- **high**: deleting data, exfiltration, privilege escalation
+
+---
+
+## 5. Planning Pipeline
+
+### Описание
+Создание и обновление планов выполнения задач с помощью `update_plan` tool.
+
+### Местоположение
+- **Файл**: `codex-rs/core/src/tools/handlers/plan.rs:100`
+
+### ASCII Диаграмма
+```
+┌──────────────────────┐
+│ LLM calls            │
+│ update_plan tool     │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────────────────────────┐
+│  1. Parse Tool Arguments                 │
+│  {                                       │
+│    "steps": [                            │
+│      {                                   │
+│        "content": "Add CLI entry",       │
+│        "activeForm": "Adding CLI...",    │
+│        "status": "in_progress"           │
+│      }                                   │
+│    ]                                     │
+│  }                                       │
+└──────────┬───────────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────────┐
+│  2. Validate Plan                        │
+│  - Exactly one in_progress               │
+│  - Valid statuses                        │
+└──────────┬───────────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────────┐
+│  3. Update Internal State                │
+│  Store plan in session                   │
+└──────────┬───────────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────────┐
+│  4. Render to UI                         │
+│  Display progress                        │
+└──────────────────────────────────────────┘
+```
+
+### Statuses
+- **pending**: Not started
+- **in_progress**: Currently working on (exactly one)
+- **completed**: Finished
+
+---
+
+## 6. Tool Execution Pipeline
+
+### Описание
+Маршрутизация и выполнение различных инструментов агента.
+
+### Местоположение
+- **Файл**: `codex-rs/core/src/tools/orchestrator.rs:33`
+
+### ASCII Диаграмма
+```
+┌──────────────────────┐
+│ LLM Tool Call        │
+│ {name: "shell"}      │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────────────────────────┐
+│  1. ToolRouter.route()                   │
+│  Match tool name to handler              │
+└──────────┬───────────────────────────────┘
+           │
+        ┌──┴────┬──────┬──────┬──────┐
+        │       │      │      │      │
+        ▼       ▼      ▼      ▼      ▼
+    ┌─────┐ ┌─────┐ ┌────┐ ┌────┐ ┌────┐
+    │shell│ │patch│ │plan│ │read│ │...│
+    └──┬──┘ └──┬──┘ └──┬─┘ └──┬─┘ └─┬──┘
+       │       │       │      │      │
+       └───────┴───────┴──────┴──────┘
+                      │
+                      ▼
+┌──────────────────────────────────────────┐
+│  2. Check Sandbox/Approval               │
+└──────────┬───────────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────────┐
+│  3. Execute Tool                         │
+└──────────┬───────────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────────┐
+│  4. Return Result to LLM                 │
+└──────────────────────────────────────────┘
+```
+
+### Supported Tools
+- shell, apply_patch, update_plan
+- read_file, write_file
+- grep, glob
+- git operations
+
+---
+
+## 7. Issue Triage Pipeline
+
+### Описание
+Автоматическая обработка GitHub issues (labeling и deduplication).
+
+### Местоположение
+- **Labeler**: `.github/workflows/issue-labeler.yml`
+- **Deduplicator**: `.github/workflows/issue-deduplicator.yml`
+
+### ASCII Диаграмма (Issue Labeler)
+```
+┌──────────────────────┐
+│ New GitHub Issue     │
+│ Created              │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────────────────────────┐
+│  1. Workflow Triggered                   │
+│  Export env vars:                        │
+│  - ISSUE_NUMBER, ISSUE_TITLE, ISSUE_BODY │
+└──────────┬───────────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────────┐
+│  2. Send to LLM                          │
+│  Prompt: Issue Labeler Prompt           │
+└──────────┬───────────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────────┐
+│  3. LLM Classifies Issue                 │
+│  Returns JSON array:                     │
+│  ["bug", "windows-os"]                   │
+└──────────┬───────────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────────┐
+│  4. Apply Labels via GitHub API          │
+└──────────────────────────────────────────┘
+```
+
+### ASCII Диаграмма (Issue Deduplicator)
+```
+┌──────────────────────┐
+│ New GitHub Issue     │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────────────────────────┐
+│  1. Fetch Recent Issues                  │
+│  Save to codex-existing-issues.json      │
+└──────────┬───────────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────────┐
+│  2. Save Current Issue                   │
+│  codex-current-issue.json                │
+└──────────┬───────────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────────┐
+│  3. Send to LLM                          │
+│  Prompt: Issue Deduplicator Prompt      │
+└──────────┬───────────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────────┐
+│  4. LLM Finds Duplicates                 │
+│  Returns JSON: [123, 456, 789]           │
+│  (up to 5 issue numbers)                 │
+└──────────┬───────────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────────┐
+│  5. Add Comment with Duplicate Links     │
+└──────────────────────────────────────────┘
+```
+
+---
+
+## Заключение
+
+### Сводная таблица пайплайнов
+
+| № | Название | Триггер | Промпт | Выход |
+|---|----------|---------|--------|-------|
+| 1 | Main Task Execution | User input | BASE_INSTRUCTIONS | Text + Tool Calls |
+| 2 | Code Review | `/review` command | REVIEW_PROMPT | JSON Findings |
+| 3 | Context Compaction | Token limit 85% | SUMMARIZATION_PROMPT | Summary message |
+| 4 | Sandbox Assessment | Command blocked | Sandbox Assessment | JSON {description, risk_level} |
+| 5 | Planning | `update_plan` tool | (none) | UI rendering |
+| 6 | Tool Execution | Tool call | (varies) | Tool result |
+| 7 | Issue Triage | New GitHub issue | Issue Labeler/Deduplicator | Labels/Duplicate links |
+
+### Общие принципы
+
+1. **Модульность**: Каждый пайплайн независим и может вызываться отдельно
+2. **Композируемость**: Пайплайны могут вызывать друг друга (Main → Review, Main → Compact)
+3. **Retry логика**: Network errors обрабатываются с exponential backoff
+4. **JSON выход**: Структурированные данные для легкой интеграции
+5. **Sub-agents**: Code Review использует отдельную LLM сессию
+
+### Точки расширения
+
+- Новые инструменты добавляются через ToolRouter
+- Новые промпты регистрируются в model_family.rs
+- Новые пайплайны интегрируются в main event loop
+
+---
+
+**Документация создана**: 2025-11-11
+**Автор**: AI Agent (Codex)
+
